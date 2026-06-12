@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import Dict, Set
 
 import aiohttp
@@ -35,6 +36,17 @@ CONTRACT_GAME_IDS: Dict[ContractType, str] = {
     "goals": "game_id_goals",
 }
 
+# Targeted trims (user-directed). {symbol: target_signed_position}. The strategy
+# moves each position toward its target at model-favorable prices only, so we
+# de-risk these without losing PnL vs our fair value.
+#   - Offside longs (we're long teams our model rates well below the market) -> 0
+#   - Brazil: pare the oversized, low-edge short on a favorite (-98 -> -25)
+TRIM_TARGETS: Dict[ContractType, Dict[str, int]] = {
+    # Disabled pending a decision on how aggressively to de-lever. Passive-only
+    # trims (see strategy Pass 0) are safe but won't unwind positions that are
+    # model-good yet tail-risky without crossing the spread.
+}
+
 
 def build_strategy(settings: Settings, contract_type: ContractType) -> StrategyConfig:
     price_min, price_max = CONTRACT_BOUNDS[contract_type]
@@ -52,6 +64,8 @@ def build_strategy(settings: Settings, contract_type: ContractType) -> StrategyC
         max_order_size=settings.max_order_size,
         max_gross_exposure=settings.max_gross_exposure,
         max_net_exposure=settings.max_net_exposure,
+        trim_targets=TRIM_TARGETS.get(contract_type),
+        hold_mode=settings.hold_mode,
     )
 
 
@@ -73,6 +87,7 @@ class MarketBot(Client):
         self._open_order_ids: Set[int] = set()
         self._capped_symbols: Set[str] = set()
         self._quote_lock = asyncio.Lock()
+        self._last_pos_refresh = 0.0
         self.strategy = build_strategy(settings, contract_type)
 
     async def on_start(self) -> None:
@@ -116,6 +131,16 @@ class MarketBot(Client):
                 book = self.fair_values.book.for_contract(self.contract_type)
             except RuntimeError:
                 return
+
+            # Bound position staleness so size-capped trims/reduces stop cleanly
+            # at their target instead of overshooting on fast-filling books.
+            now = time.monotonic()
+            if now - self._last_pos_refresh > 1.0:
+                try:
+                    await self.update_positions()
+                    self._last_pos_refresh = now
+                except Exception:
+                    pass
 
             try:
                 intents = compute_quotes(

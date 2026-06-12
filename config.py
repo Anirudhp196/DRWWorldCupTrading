@@ -41,6 +41,17 @@ class Settings:
     max_net_exposure: int = 250
     simulations: int = 50_000
     fair_value_refresh_sec: int = 300
+    # HOLD mode: passive-only. Disables new edge trades (Pass 2) so the bot
+    # stops adding risk and never crosses the spread. It only rests passive,
+    # model-favorable reduce orders on over-cap positions and otherwise holds.
+    hold_mode: bool = False
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    val = os.environ.get(name)
+    if val is None:
+        return default
+    return val.strip().lower() in ("1", "true", "yes", "on")
 
 
 def load_settings() -> Settings:
@@ -65,4 +76,5 @@ def load_settings() -> Settings:
         max_net_exposure=int(os.environ.get("MAX_NET_EXPOSURE", 250)),
         simulations=int(os.environ.get("SIMULATIONS", 50_000)),
         fair_value_refresh_sec=int(os.environ.get("FAIR_VALUE_REFRESH_SEC", 300)),
+        hold_mode=_env_bool("HOLD_MODE", False),
     )

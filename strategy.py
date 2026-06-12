@@ -41,6 +41,13 @@ class StrategyConfig:
     max_gross_exposure: int = 500
     max_net_exposure: int = 250
     tick: float = 0.01
+    # HOLD mode: skip Pass 2 (new edge trades). Only passive trims/reduces run,
+    # so the bot never adds risk and never crosses the spread.
+    hold_mode: bool = False
+    # Optional {symbol: target_signed_position} for user-directed trims. The
+    # strategy will move each named position toward its target, trading ONLY at
+    # model-favorable prices (never realizing a loss vs our fair value).
+    trim_targets: Optional[Dict[str, int]] = None
 
 
 def _gross(positions: Dict[str, int]) -> int:
@@ -64,8 +71,49 @@ def compute_quotes(
     gross = _gross(positions)
     net = _net(positions)
 
+    # --- PASS 0: TARGETED TRIM (user-directed risk reduction) ---
+    # Move specific positions toward a target, trading ONLY at model-favorable
+    # prices. We cross the spread to exit a long only when the bid is still
+    # >= fair (we realize a gain vs model), and cover a short only at <= fair
+    # (we never pay up). So a trim is at worst PnL-neutral vs our model.
+    trimmed: set = set()
+    for symbol, target in (cfg.trim_targets or {}).items():
+        pos = int(positions.get(symbol, 0))
+        # Only reduce magnitude toward target; never flip or grow a position.
+        if pos == 0 or (pos > 0 and target >= pos) or (pos < 0 and target <= pos):
+            continue
+        book = order_books.get(symbol)
+        fair = fair_values.get(symbol)
+        if book is None or fair is None or fair <= 0:
+            continue
+        size = min(abs(target - pos), cfg.max_order_size)
+        if size <= 0:
+            continue
+        # PASSIVE-ONLY: rest on our own side of the book (maker). We never cross
+        # the spread, so a trim can only fill when a counterparty trades into us
+        # at a model-favorable price — it cannot run away / overshoot the target.
+        if target < pos:
+            # Reduce a long -> rest an ASK at the offer (only sells if lifted).
+            ask_px = book.best_ask_px
+            if ask_px is not None and ask_px >= fair:
+                price = round(ask_px, 2)
+            else:
+                price = round(max(fair, cfg.price_min), 2)
+            intents.append(QuoteIntent(symbol, price, -size, "trim", 0.0))
+        else:
+            # Reduce a short -> rest a BID at the bid (only buys if hit).
+            bid_px = book.best_bid_px
+            if bid_px is not None and bid_px <= fair:
+                price = round(bid_px, 2)
+            else:
+                price = round(min(fair, cfg.price_max), 2)
+            intents.append(QuoteIntent(symbol, price, size, "trim", 0.0))
+        trimmed.add(symbol)
+
     # --- PASS 1: REDUCE oversized positions (always allowed; lowers risk) ---
     for symbol, book in order_books.items():
+        if symbol in trimmed:
+            continue
         pos = int(positions.get(symbol, 0))
         if abs(pos) <= cfg.max_position:
             continue
@@ -102,8 +150,14 @@ def compute_quotes(
             intents.append(QuoteIntent(symbol, price, size, "reduce_short", 0.0))
 
     # --- PASS 2: EDGE trades, ranked by edge, subject to exposure caps ---
+    # Skipped entirely in HOLD mode so we never add risk or cross the spread.
+    if cfg.hold_mode:
+        return _dedupe(intents)
+
     candidates: List[QuoteIntent] = []
     for symbol, book in order_books.items():
+        if symbol in trimmed:
+            continue
         fair = fair_values.get(symbol)
         if fair is None or fair <= 0:
             continue
@@ -165,6 +219,7 @@ def _size_for_edge(edge: float, min_edge: float, room: int, max_order: int) -> i
 
 def _dedupe(intents: List[QuoteIntent]) -> List[QuoteIntent]:
     priority = {
+        "trim": -1,
         "reduce_long": 0,
         "reduce_short": 0,
         "aggressive_buy": 1,
@@ -182,5 +237,8 @@ def _dedupe(intents: List[QuoteIntent]) -> List[QuoteIntent]:
         elif (priority.get(intent.reason, 9) == priority.get(existing.reason, 9)
               and intent.edge > existing.edge):
             best[key] = intent
-    return sorted(best.values(), key=lambda x: (x.reason.startswith("reduce"), x.edge),
-                  reverse=True)
+    return sorted(
+        best.values(),
+        key=lambda x: (x.reason in ("trim", "reduce_long", "reduce_short"), x.edge),
+        reverse=True,
+    )
