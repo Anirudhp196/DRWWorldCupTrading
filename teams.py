@@ -7,7 +7,7 @@ as of June 2026 pre-tournament. These drive the entire fair value engine.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 # Elo ratings — wider spread to reflect reality.
 # Top tier teams are MUCH stronger than bottom-tier debutants.
@@ -30,7 +30,7 @@ ELO_RATINGS: Dict[str, float] = {
     "Japan": 1820,         # manual view: like them -> raised
     "Senegal": 1810,       # manual view: like them -> raised
     "Mexico": 1765,
-    "United States": 1760,
+    "United States": 1830,  # manual view: strong run expected + 4-goal opener -> raised to dark-horse tier
     "Uruguay": 1755,       # manual view: don't rate them -> downgraded
     # Tier 3: competitive but won't win (can win group / reach QF)
     "Ecuador": 1775,       # manual view: like them -> raised
@@ -83,6 +83,17 @@ GROUPS: List[List[str]] = [
     ["England", "Croatia", "Ghana", "Panama"],                     # L
 ]
 
+# Completed group-stage matches: (team_a, team_b, goals_a, goals_b). These are
+# locked in — the simulator uses these exact scores instead of simulating, so
+# real goals are certain and real group standings carry forward.
+# Updated through matchday 2026-06-12.
+COMPLETED_MATCHES: List[Tuple[str, str, int, int]] = [
+    ("Mexico", "South Africa", 2, 0),            # Group A, Jun 11
+    ("South Korea", "Czechia", 2, 1),            # Group A, Jun 11
+    ("Canada", "Bosnia and Herzegovina", 1, 1),  # Group B, Jun 12
+    ("United States", "Paraguay", 4, 1),         # Group D, Jun 12
+]
+
 POINTS_SETTLEMENT = {
     "champion": 64,
     "finalist": 32,
@@ -113,6 +124,10 @@ for _team, _elo in ELO_RATINGS.items():
         GOALS_PER_GAME[_team] = 1.0
     else:
         GOALS_PER_GAME[_team] = 0.8
+
+# Manual goals overrides (attack stronger than the Elo tier implies).
+# US opened with 4 goals; reflect a higher scoring rate for their run.
+GOALS_PER_GAME["United States"] = 1.8
 
 
 @dataclass(frozen=True)

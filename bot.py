@@ -55,6 +55,9 @@ def build_strategy(settings: Settings, contract_type: ContractType) -> StrategyC
         "points": settings.min_edge_points,
         "goals": settings.min_edge_goals,
     }[contract_type]
+    # Goals de-lever: only the goals market trims toward a lower target by
+    # resting passive cover orders at the top of book (no spread-crossing).
+    delever = settings.delever_goals and contract_type == "goals"
     return StrategyConfig(
         contract_type=contract_type,
         min_edge=min_edge,
@@ -66,6 +69,8 @@ def build_strategy(settings: Settings, contract_type: ContractType) -> StrategyC
         max_net_exposure=settings.max_net_exposure,
         trim_targets=TRIM_TARGETS.get(contract_type),
         hold_mode=settings.hold_mode,
+        reduce_target=settings.goals_reduce_target if delever else None,
+        join_touch=delever,
     )
 
 

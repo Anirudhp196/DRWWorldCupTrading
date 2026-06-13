@@ -45,6 +45,11 @@ class Settings:
     # stops adding risk and never crosses the spread. It only rests passive,
     # model-favorable reduce orders on over-cap positions and otherwise holds.
     hold_mode: bool = False
+    # De-lever the goals short: trim goals positions down toward this magnitude
+    # by resting passive cover orders at the top of the book (maker, no
+    # spread-crossing). Only active when delever_goals is True.
+    delever_goals: bool = False
+    goals_reduce_target: int = 20
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -77,4 +82,6 @@ def load_settings() -> Settings:
         simulations=int(os.environ.get("SIMULATIONS", 50_000)),
         fair_value_refresh_sec=int(os.environ.get("FAIR_VALUE_REFRESH_SEC", 300)),
         hold_mode=_env_bool("HOLD_MODE", False),
+        delever_goals=_env_bool("DELEVER_GOALS", False),
+        goals_reduce_target=int(os.environ.get("GOALS_REDUCE_TARGET", 20)),
     )

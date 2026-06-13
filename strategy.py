@@ -44,6 +44,14 @@ class StrategyConfig:
     # HOLD mode: skip Pass 2 (new edge trades). Only passive trims/reduces run,
     # so the bot never adds risk and never crosses the spread.
     hold_mode: bool = False
+    # De-lever controls for the REDUCE pass:
+    #   reduce_target: trim positions down to this magnitude (defaults to
+    #     max_position when None).
+    #   join_touch: rest reduce orders at the best bid/ask (top of book, still
+    #     passive maker) instead of at fair, so they actually fill in markets
+    #     where price sits away from our model fair (e.g. the goals short).
+    reduce_target: Optional[int] = None
+    join_touch: bool = False
     # Optional {symbol: target_signed_position} for user-directed trims. The
     # strategy will move each named position toward its target, trading ONLY at
     # model-favorable prices (never realizing a loss vs our fair value).
@@ -111,42 +119,46 @@ def compute_quotes(
         trimmed.add(symbol)
 
     # --- PASS 1: REDUCE oversized positions (always allowed; lowers risk) ---
+    reduce_cap = cfg.reduce_target if cfg.reduce_target is not None else cfg.max_position
     for symbol, book in order_books.items():
         if symbol in trimmed:
             continue
         pos = int(positions.get(symbol, 0))
-        if abs(pos) <= cfg.max_position:
+        if abs(pos) <= reduce_cap:
             continue
         fair = fair_values.get(symbol)
         if fair is None or fair <= 0:
             continue
 
-        excess = abs(pos) - cfg.max_position
+        excess = abs(pos) - reduce_cap
         size = min(excess, cfg.max_order_size)
         if size <= 0:
             continue
 
+        bid_px = book.best_bid_px
+        ask_px = book.best_ask_px
         if pos > 0:
-            # Long too big -> trim by RESTING an ask at fair value. We never
-            # cross the spread (no paying up): this only fills if a buyer lifts
-            # us at >= fair, so trimming is at worst PnL-neutral vs our model.
-            price = round(min(fair, cfg.price_max), 2)
-            bid_px = book.best_bid_px
-            # Keep the resting ask strictly above the best bid so it stays a
-            # passive maker order rather than crossing.
-            if bid_px is not None and price <= bid_px:
-                price = round(bid_px + cfg.tick, 2)
+            # Long too big -> trim by RESTING an ask. join_touch rests at the
+            # best offer (top of book, still a maker order) so it fills in
+            # markets priced away from fair; otherwise rest at fair. Either way
+            # we never cross the spread (no paying up).
+            if cfg.join_touch and ask_px is not None:
+                price = round(ask_px, 2)
+            else:
+                price = round(min(fair, cfg.price_max), 2)
+                if bid_px is not None and price <= bid_px:
+                    price = round(bid_px + cfg.tick, 2)
             intents.append(QuoteIntent(symbol, price, -size, "reduce_long", 0.0))
         else:
-            # Short too big -> cover by RESTING a bid at fair value. We never
-            # lift offers: this only fills if a seller hits us at <= fair, so
-            # covering is at worst PnL-neutral vs our model.
-            price = round(max(fair, cfg.price_min), 2)
-            ask_px = book.best_ask_px
-            # Keep the resting bid strictly below the best ask so it stays a
-            # passive maker order rather than crossing.
-            if ask_px is not None and price >= ask_px:
-                price = round(ask_px - cfg.tick, 2)
+            # Short too big -> cover by RESTING a bid. join_touch rests at the
+            # best bid (top of book, still a maker order) so a seller can hit us;
+            # otherwise rest at fair. We never lift offers / cross the spread.
+            if cfg.join_touch and bid_px is not None:
+                price = round(bid_px, 2)
+            else:
+                price = round(max(fair, cfg.price_min), 2)
+                if ask_px is not None and price >= ask_px:
+                    price = round(ask_px - cfg.tick, 2)
             intents.append(QuoteIntent(symbol, price, size, "reduce_short", 0.0))
 
     # --- PASS 2: EDGE trades, ranked by edge, subject to exposure caps ---

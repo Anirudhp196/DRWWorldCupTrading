@@ -15,11 +15,17 @@ from typing import Dict, List, Tuple
 
 from teams import (
     ALL_TEAMS,
+    COMPLETED_MATCHES,
     GROUPS,
     POINTS_SETTLEMENT,
     TeamProfile,
     team_profile,
 )
+
+
+def _completed_lookup() -> Dict[frozenset, Tuple[str, str, int, int]]:
+    """Index completed matches by the unordered pair of teams."""
+    return {frozenset((a, b)): (a, b, ga, gb) for a, b, ga, gb in COMPLETED_MATCHES}
 
 
 @dataclass
@@ -137,11 +143,18 @@ def _simulate_group(
     profiles: Dict[str, TeamProfile],
     rng: random.Random,
     goal_totals: Dict[str, int],
+    completed: Dict[frozenset, Tuple[str, str, int, int]],
 ) -> Tuple[List[GroupStanding], GroupStanding]:
     standings = {team: GroupStanding(team=team) for team in group}
     for i, home in enumerate(group):
         for away in group[i + 1:]:
-            ga, gb = _simulate_group_match(home, away, profiles, rng)
+            result = completed.get(frozenset((home, away)))
+            if result is not None:
+                ra, _rb, rga, rgb = result
+                # Orient the locked score to (home, away).
+                ga, gb = (rga, rgb) if ra == home else (rgb, rga)
+            else:
+                ga, gb = _simulate_group_match(home, away, profiles, rng)
             goal_totals[home] += ga
             goal_totals[away] += gb
             _apply_result(standings[home], standings[away], ga, gb)
@@ -275,6 +288,7 @@ def run_simulation(
 ) -> SimulationStats:
     profiles = {team: team_profile(team) for team in ALL_TEAMS}
     rng = random.Random(seed)
+    completed = _completed_lookup()
 
     binary_wins = {team: 0.0 for team in ALL_TEAMS}
     points_sum = {team: 0.0 for team in ALL_TEAMS}
@@ -287,7 +301,7 @@ def run_simulation(
         group_exits: Dict[str, str] = {}
 
         for group in GROUPS:
-            ordered, third = _simulate_group(group, profiles, rng, goal_totals)
+            ordered, third = _simulate_group(group, profiles, rng, goal_totals, completed)
             qualifiers.extend([ordered[0].team, ordered[1].team])
             third_places.append(third)
             for standing in ordered[2:]:
