@@ -88,10 +88,23 @@ GROUPS: List[List[str]] = [
 # real goals are certain and real group standings carry forward.
 # Updated through matchday 2026-06-12.
 COMPLETED_MATCHES: List[Tuple[str, str, int, int]] = [
+    # --- Matchday 1 ---
     ("Mexico", "South Africa", 2, 0),            # Group A, Jun 11
     ("South Korea", "Czechia", 2, 1),            # Group A, Jun 11
     ("Canada", "Bosnia and Herzegovina", 1, 1),  # Group B, Jun 12
     ("United States", "Paraguay", 4, 1),         # Group D, Jun 12
+    ("Qatar", "Switzerland", 1, 1),              # Group B, Jun 13
+    ("Brazil", "Morocco", 1, 1),                 # Group C, Jun 13
+    ("Scotland", "Haiti", 1, 0),                 # Group C, Jun 13
+    ("Australia", "Turkey", 2, 0),               # Group D, Jun 13
+    ("Germany", "Curacao", 7, 1),                # Group E, Jun 14
+    ("Netherlands", "Japan", 2, 2),              # Group F, Jun 14
+    ("Ivory Coast", "Ecuador", 1, 0),            # Group E, Jun 14
+    ("Sweden", "Tunisia", 5, 1),                 # Group F, Jun 14
+    ("Spain", "Cabo Verde", 0, 0),               # Group H, Jun 15
+    ("Belgium", "Egypt", 1, 1),                  # Group G, Jun 15
+    ("Uruguay", "Saudi Arabia", 1, 1),           # Group H, Jun 15
+    ("Iran", "New Zealand", 2, 2),               # Group G, Jun 15
 ]
 
 POINTS_SETTLEMENT = {
