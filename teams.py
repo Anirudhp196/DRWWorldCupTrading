@@ -105,6 +105,9 @@ COMPLETED_MATCHES: List[Tuple[str, str, int, int]] = [
     ("Belgium", "Egypt", 1, 1),                  # Group G, Jun 15
     ("Uruguay", "Saudi Arabia", 1, 1),           # Group H, Jun 15
     ("Iran", "New Zealand", 2, 2),               # Group G, Jun 15
+    ("France", "Senegal", 3, 1),                 # Group I, Jun 16
+    ("Norway", "Iraq", 4, 1),                    # Group I, Jun 16
+    ("Argentina", "Algeria", 3, 0),              # Group J, Jun 16
 ]
 
 POINTS_SETTLEMENT = {
