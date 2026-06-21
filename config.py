@@ -50,6 +50,11 @@ class Settings:
     # spread-crossing). Only active when delever_goals is True.
     delever_goals: bool = False
     goals_reduce_target: int = 20
+    # Risk-trim tolerance (price units): how far ABOVE fair we'll pay to cover a
+    # goals short (or below fair to trim a long) purely to cut concentrated risk.
+    # 0.0 = strictly model-favorable de-lever only. >0 lets the de-lever cross
+    # the spread slightly against the model to actually reduce exposure.
+    goals_reduce_tolerance: float = 0.0
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -84,4 +89,5 @@ def load_settings() -> Settings:
         hold_mode=_env_bool("HOLD_MODE", False),
         delever_goals=_env_bool("DELEVER_GOALS", False),
         goals_reduce_target=int(os.environ.get("GOALS_REDUCE_TARGET", 20)),
+        goals_reduce_tolerance=float(os.environ.get("GOALS_REDUCE_TOLERANCE", 0.0)),
     )

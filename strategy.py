@@ -47,11 +47,19 @@ class StrategyConfig:
     # De-lever controls for the REDUCE pass:
     #   reduce_target: trim positions down to this magnitude (defaults to
     #     max_position when None).
-    #   join_touch: rest reduce orders at the best bid/ask (top of book, still
-    #     passive maker) instead of at fair, so they actually fill in markets
-    #     where price sits away from our model fair (e.g. the goals short).
+    #   join_touch: model-favorable active de-lever. Reduce orders may CROSS the
+    #     spread, but only when the fill price is on the right side of fair
+    #     (buy <= fair to cover a short, sell >= fair to trim a long), so every
+    #     de-lever fill is +EV vs our model. When no favorable price exists the
+    #     position is left untouched. Used to unwind the offside goals short.
     reduce_target: Optional[int] = None
     join_touch: bool = False
+    # Risk-trim tolerance (price units). When > 0 the join_touch de-lever will
+    # cross the spread to reduce exposure even slightly AGAINST the model: it
+    # covers a short at up to (fair + tol) and trims a long down to (fair - tol).
+    # This bounds the spread we'll pay so we never get picked off at a silly
+    # price. 0.0 keeps the de-lever strictly model-favorable.
+    reduce_tolerance: float = 0.0
     # Optional {symbol: target_signed_position} for user-directed trims. The
     # strategy will move each named position toward its target, trading ONLY at
     # model-favorable prices (never realizing a loss vs our fair value).
@@ -138,23 +146,40 @@ def compute_quotes(
         bid_px = book.best_bid_px
         ask_px = book.best_ask_px
         if pos > 0:
-            # Long too big -> trim by RESTING an ask. join_touch rests at the
-            # best offer (top of book, still a maker order) so it fills in
-            # markets priced away from fair; otherwise rest at fair. Either way
-            # we never cross the spread (no paying up).
-            if cfg.join_touch and ask_px is not None:
-                price = round(ask_px, 2)
+            # Long too big -> trim by SELLING. In join_touch (de-lever) mode we
+            # only sell at a MODEL-FAVORABLE price (>= fair): cross to hit the
+            # bid when the bid is already >= fair, else rest passively at an
+            # offer that is >= fair. If neither side is favorable we skip and
+            # keep the long (never sell below fair). Non-join_touch keeps the
+            # original rest-at-fair behavior.
+            if cfg.join_touch:
+                floor = fair - cfg.reduce_tolerance    # willing to sell down to here
+                if bid_px is not None and bid_px >= floor:
+                    price = round(bid_px, 2)            # cross the spread to exit
+                elif ask_px is not None and ask_px >= floor:
+                    price = round(ask_px, 2)            # passive maker
+                else:
+                    continue
             else:
                 price = round(min(fair, cfg.price_max), 2)
                 if bid_px is not None and price <= bid_px:
                     price = round(bid_px + cfg.tick, 2)
             intents.append(QuoteIntent(symbol, price, -size, "reduce_long", 0.0))
         else:
-            # Short too big -> cover by RESTING a bid. join_touch rests at the
-            # best bid (top of book, still a maker order) so a seller can hit us;
-            # otherwise rest at fair. We never lift offers / cross the spread.
-            if cfg.join_touch and bid_px is not None:
-                price = round(bid_px, 2)
+            # Short too big -> cover by BUYING. In join_touch (de-lever) mode we
+            # only buy at a MODEL-FAVORABLE price (<= fair): cross to lift the
+            # offer when the ask is already <= fair (this actively unwinds the
+            # deeply-offside shorts at +EV), else rest passively at a bid that is
+            # <= fair. If neither side is favorable we skip and keep the short
+            # (never pay above fair). Non-join_touch keeps the original behavior.
+            if cfg.join_touch:
+                cap = fair + cfg.reduce_tolerance      # willing to pay up to here
+                if ask_px is not None and ask_px <= cap:
+                    price = round(ask_px, 2)            # cross the spread to cover
+                elif bid_px is not None and bid_px <= cap:
+                    price = round(bid_px, 2)            # passive maker
+                else:
+                    continue
             else:
                 price = round(max(fair, cfg.price_min), 2)
                 if ask_px is not None and price >= ask_px:

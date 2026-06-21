@@ -71,6 +71,7 @@ def build_strategy(settings: Settings, contract_type: ContractType) -> StrategyC
         hold_mode=settings.hold_mode,
         reduce_target=settings.goals_reduce_target if delever else None,
         join_touch=delever,
+        reduce_tolerance=settings.goals_reduce_tolerance if delever else 0.0,
     )
 
 
