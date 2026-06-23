@@ -125,6 +125,15 @@ COMPLETED_MATCHES: List[Tuple[str, str, int, int]] = [
     ("Germany", "Ivory Coast", 2, 1),            # Group E, Jun 20
     ("Ecuador", "Curacao", 0, 0),                # Group E, Jun 20
     ("Netherlands", "Sweden", 5, 1),             # Group F, Jun 20
+    # --- Matchday 2, Groups G-J (Jun 21-22) ---
+    ("Belgium", "Iran", 0, 0),                   # Group G, Jun 21
+    ("Spain", "Saudi Arabia", 4, 0),             # Group H, Jun 21
+    ("Uruguay", "Cabo Verde", 2, 2),             # Group H, Jun 21
+    ("Egypt", "New Zealand", 3, 1),              # Group G, Jun 22
+    ("Argentina", "Austria", 2, 0),              # Group J, Jun 22
+    ("France", "Iraq", 3, 0),                    # Group I, Jun 22
+    ("Norway", "Senegal", 3, 2),                 # Group I, Jun 22
+    ("Algeria", "Jordan", 2, 1),                 # Group J, Jun 22
 ]
 
 POINTS_SETTLEMENT = {
