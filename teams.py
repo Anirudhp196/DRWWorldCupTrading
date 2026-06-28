@@ -134,6 +134,63 @@ COMPLETED_MATCHES: List[Tuple[str, str, int, int]] = [
     ("France", "Iraq", 3, 0),                    # Group I, Jun 22
     ("Norway", "Senegal", 3, 2),                 # Group I, Jun 22
     ("Algeria", "Jordan", 2, 1),                 # Group J, Jun 22
+    # --- Group-stage finales / remaining MD2-MD3 (Jun 20-27) -- group stage COMPLETE ---
+    ("Japan", "Tunisia", 4, 0),                  # Group F, Jun 20/21
+    ("Portugal", "Uzbekistan", 5, 0),            # Group K, Jun 23
+    ("Colombia", "Congo DR", 1, 0),              # Group K, Jun 23
+    ("England", "Ghana", 0, 0),                  # Group L, Jun 23
+    ("Croatia", "Panama", 1, 0),                 # Group L, Jun 23
+    ("Mexico", "Czechia", 3, 0),                 # Group A, Jun 24
+    ("South Africa", "South Korea", 1, 0),       # Group A, Jun 24
+    ("Switzerland", "Canada", 2, 1),             # Group B, Jun 24
+    ("Bosnia and Herzegovina", "Qatar", 3, 1),   # Group B, Jun 24
+    ("Brazil", "Scotland", 3, 0),                # Group C, Jun 24
+    ("Morocco", "Haiti", 4, 2),                  # Group C, Jun 24
+    ("Turkey", "United States", 3, 2),           # Group D, Jun 25
+    ("Paraguay", "Australia", 0, 0),             # Group D, Jun 25
+    ("Ivory Coast", "Curacao", 2, 0),            # Group E, Jun 25
+    ("Ecuador", "Germany", 2, 1),                # Group E, Jun 25
+    ("Netherlands", "Tunisia", 3, 1),            # Group F, Jun 25
+    ("Japan", "Sweden", 1, 1),                   # Group F, Jun 25
+    ("Belgium", "New Zealand", 5, 1),            # Group G, Jun 26
+    ("Egypt", "Iran", 1, 1),                     # Group G, Jun 26
+    ("Spain", "Uruguay", 1, 0),                  # Group H, Jun 26
+    ("Cabo Verde", "Saudi Arabia", 0, 0),        # Group H, Jun 26
+    ("France", "Norway", 4, 1),                  # Group I, Jun 26
+    ("Senegal", "Iraq", 5, 0),                   # Group I, Jun 26
+    ("Argentina", "Jordan", 3, 1),               # Group J, Jun 27
+    ("Algeria", "Austria", 3, 3),                # Group J, Jun 27
+    ("Colombia", "Portugal", 0, 0),              # Group K, Jun 27
+    ("Congo DR", "Uzbekistan", 3, 1),            # Group K, Jun 27
+    ("England", "Panama", 2, 0),                 # Group L, Jun 27
+    ("Croatia", "Ghana", 2, 1),                  # Group L, Jun 27
+]
+
+# Actual Round-of-32 bracket (locked Jun 27 once the group stage finished).
+# Ordered as the LEAVES of the knockout tree so that pairing adjacent winners
+# (0v1, 2v3, ...) each round reproduces the real FIFA bracket:
+#   R32 leaves -> R16 -> QF -> SF -> Final.
+# Derived from the official match feeds (R16: 89=W74vW77, 90=W73vW75,
+# 91=W76vW78, 92=W79vW80, 93=W83vW84, 94=W81vW82, 95=W86vW88, 96=W85vW87;
+# QF: 97=89v90, 98=93v94, 99=91v92, 100=95v96; SF: 101=97v98, 102=99v100).
+# Empty list -> simulator falls back to Elo-seeded bracket (pre-knockout).
+KNOCKOUT_BRACKET: List[Tuple[str, str]] = [
+    ("Brazil", "Japan"),                          # M74
+    ("Ivory Coast", "Norway"),                    # M77
+    ("South Africa", "Canada"),                   # M73
+    ("Germany", "Paraguay"),                      # M75
+    ("Portugal", "Croatia"),                      # M83
+    ("Spain", "Austria"),                         # M84
+    ("United States", "Bosnia and Herzegovina"),  # M81
+    ("Belgium", "Senegal"),                       # M82
+    ("Netherlands", "Morocco"),                   # M76
+    ("France", "Sweden"),                         # M78
+    ("Mexico", "Ecuador"),                        # M79
+    ("England", "Congo DR"),                      # M80
+    ("Argentina", "Cabo Verde"),                  # M86
+    ("Australia", "Egypt"),                       # M88
+    ("Switzerland", "Algeria"),                   # M85
+    ("Colombia", "Ghana"),                        # M87
 ]
 
 POINTS_SETTLEMENT = {

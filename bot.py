@@ -23,6 +23,14 @@ from trading_client import Client, OrderBook, create_session
 
 logger = logging.getLogger(__name__)
 
+# Rate-limit guardrails. The book ticks far faster than our model moves, so we
+# (a) never re-quote a market more than once per MIN_REQUOTE_INTERVAL seconds,
+# and (b) skip the cancel/replace cycle entirely when the desired orders are
+# unchanged from what's already resting. Together these cut order churn (and
+# "Too Many Requests" errors) by an order of magnitude during stable books.
+MIN_REQUOTE_INTERVAL = 4.0
+QUOTE_LOOP_SLEEP = 4.0
+
 
 CONTRACT_BOUNDS: Dict[ContractType, tuple[float, float]] = {
     "binary": (0.0, 100.0),
@@ -94,6 +102,8 @@ class MarketBot(Client):
         self._capped_symbols: Set[str] = set()
         self._quote_lock = asyncio.Lock()
         self._last_pos_refresh = 0.0
+        self._last_requote = 0.0
+        self._last_intent_sig: tuple | None = None
         self.strategy = build_strategy(settings, contract_type)
 
     async def on_start(self) -> None:
@@ -105,7 +115,7 @@ class MarketBot(Client):
         while True:
             await self.fair_values.ensure_fresh()
             await self._requote()
-            await asyncio.sleep(1.5)
+            await asyncio.sleep(QUOTE_LOOP_SLEEP)
 
     async def on_orderbook_updates(self, order_books: Dict[str, OrderBook]) -> None:
         await self._requote()
@@ -133,6 +143,13 @@ class MarketBot(Client):
         if self._quote_lock.locked():
             return
         async with self._quote_lock:
+            # Throttle: the book ticks faster than our edge moves. Cap re-quote
+            # frequency per market to avoid hammering the order API.
+            now_throttle = time.monotonic()
+            if now_throttle - self._last_requote < MIN_REQUOTE_INTERVAL:
+                return
+            self._last_requote = now_throttle
+
             try:
                 book = self.fair_values.book.for_contract(self.contract_type)
             except RuntimeError:
@@ -166,6 +183,18 @@ class MarketBot(Client):
                 )
 
     async def _execute_orders(self, intents: list[QuoteIntent]) -> None:
+        # Churn guard: if the desired orders are identical to what we last
+        # placed and we still have live orders resting, leave them be — no
+        # cancel, no replace. A fill changes positions (and thus intents), so
+        # this only skips genuinely redundant cancel/replace cycles.
+        sig = tuple(
+            sorted(
+                (i.display_symbol, round(i.price, 2), i.qty) for i in intents[:30]
+            )
+        )
+        if sig == self._last_intent_sig and self._open_order_ids:
+            return
+
         # Cancel all existing orders first to avoid stale quotes.
         # Orders may fill or expire between fetch and cancel — tolerate races.
         try:
@@ -224,6 +253,7 @@ class MarketBot(Client):
         # Reset cap tracking for symbols no longer being attempted.
         attempted = {i.display_symbol for i in intents[:30]}
         self._capped_symbols &= attempted
+        self._last_intent_sig = sig
         if placed:
             # Routine re-quote; keep at DEBUG so quiet mode stays clean.
             logger.debug("[%s] Placed %d orders", self.contract_type.upper(), placed)

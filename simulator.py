@@ -17,6 +17,7 @@ from teams import (
     ALL_TEAMS,
     COMPLETED_MATCHES,
     GROUPS,
+    KNOCKOUT_BRACKET,
     POINTS_SETTLEMENT,
     TeamProfile,
     team_profile,
@@ -198,14 +199,20 @@ def _seed_bracket(teams: List[str], profiles: Dict[str, TeamProfile]) -> List[st
 
 
 def _simulate_knockout(
-    teams: List[str],
+    bracket_order: List[str],
     profiles: Dict[str, TeamProfile],
     rng: random.Random,
     goal_totals: Dict[str, int],
 ) -> Tuple[str, Dict[str, str]]:
-    """Simulate full knockout bracket. Returns (champion, {team: exit_stage})."""
+    """Simulate full knockout bracket. Returns (champion, {team: exit_stage}).
+
+    ``bracket_order`` must already be the bracket-ordered list of entrants so
+    that pairing adjacent entries (0v1, 2v3, ...) each round reproduces the
+    real draw. Callers seed it from the actual bracket when known, else from
+    Elo seeding.
+    """
     exits: Dict[str, str] = {}
-    remaining = _seed_bracket(teams, profiles)
+    remaining = list(bracket_order)
     stage_order = [
         "round_of_32",
         "round_of_16",
@@ -281,6 +288,24 @@ def _assign_points(
     return points
 
 
+def _fixed_bracket_order() -> List[str]:
+    """Flatten KNOCKOUT_BRACKET to a bracket-ordered list, or [] if unusable.
+
+    Returns [] (triggering Elo-seeded fallback) unless the bracket has exactly
+    32 distinct, known teams — guards against a half-filled or typo'd bracket.
+    """
+    if not KNOCKOUT_BRACKET:
+        return []
+    order: List[str] = []
+    for a, b in KNOCKOUT_BRACKET:
+        order.append(a)
+        order.append(b)
+    known = set(ALL_TEAMS)
+    if len(order) != 32 or len(set(order)) != 32 or any(t not in known for t in order):
+        return []
+    return order
+
+
 def run_simulation(
     *,
     simulations: int = 10_000,
@@ -289,6 +314,8 @@ def run_simulation(
     profiles = {team: team_profile(team) for team in ALL_TEAMS}
     rng = random.Random(seed)
     completed = _completed_lookup()
+    fixed_bracket = _fixed_bracket_order()
+    fixed_set = set(fixed_bracket)
 
     binary_wins = {team: 0.0 for team in ALL_TEAMS}
     points_sum = {team: 0.0 for team in ALL_TEAMS}
@@ -307,11 +334,17 @@ def run_simulation(
             for standing in ordered[2:]:
                 group_exits[standing.team] = "group_stage"
 
-        qualifiers.extend(_select_third_place_teams(third_places))
-        qualifiers = qualifiers[:32]
+        if fixed_bracket:
+            # Use the real draw: bracket teams advance, everyone else is out.
+            bracket_order = fixed_bracket
+            group_exits = {t: "group_stage" for t in ALL_TEAMS if t not in fixed_set}
+        else:
+            qualifiers.extend(_select_third_place_teams(third_places))
+            qualifiers = qualifiers[:32]
+            bracket_order = _seed_bracket(qualifiers, profiles)
 
         champion, knockout_exits = _simulate_knockout(
-            qualifiers, profiles, rng, goal_totals,
+            bracket_order, profiles, rng, goal_totals,
         )
         binary_wins[champion] += 1
 
