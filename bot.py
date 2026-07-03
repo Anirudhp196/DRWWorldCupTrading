@@ -44,16 +44,23 @@ CONTRACT_GAME_IDS: Dict[ContractType, str] = {
     "goals": "game_id_goals",
 }
 
-# Targeted trims (user-directed). {symbol: target_signed_position}. The strategy
-# moves each position toward its target at model-favorable prices only, so we
-# de-risk these without losing PnL vs our fair value.
-#   - Offside longs (we're long teams our model rates well below the market) -> 0
-#   - Brazil: pare the oversized, low-edge short on a favorite (-98 -> -25)
-TRIM_TARGETS: Dict[ContractType, Dict[str, int]] = {
-    # Disabled pending a decision on how aggressively to de-lever. Passive-only
-    # trims (see strategy Pass 0) are safe but won't unwind positions that are
-    # model-good yet tail-risky without crossing the spread.
-}
+# Targeted trims (user-directed). {symbol: target_signed_position}. Pass 0
+# actively crosses the spread toward each target, but only at model-favorable
+# prices (bounded by TRIM_TOLERANCE), so we unwind offside/dead positions
+# without paying up or selling value away.
+#   - Offside shorts: we're short a team the model now rates a live favorite
+#     (settling the short against us in expectation) -> cover to 0.
+#   - Dead longs: we're long a team eliminated in the group stage / Round of 32,
+#     so the contract is frozen near its settlement floor -> dump to 0.
+# Good shorts on eliminated teams (settle to ~0 in our favor) and longs on live
+# teams (directional bets) are deliberately left OUT of this list.
+TRIM_TOLERANCE = 1.0
+# Cleared for WIN MODE: the offside shorts are covered and the dead longs are
+# dumped, so there's nothing left to force-trim. With the edge engine back on
+# (hold_mode=false) the strategy repositions purely on model edge — including
+# building the model-favored France long — so leaving targets here would just
+# fight Pass 2. Repopulate only for another one-off, model-independent unwind.
+TRIM_TARGETS: Dict[ContractType, Dict[str, int]] = {}
 
 
 def build_strategy(settings: Settings, contract_type: ContractType) -> StrategyConfig:
@@ -76,6 +83,7 @@ def build_strategy(settings: Settings, contract_type: ContractType) -> StrategyC
         max_gross_exposure=settings.max_gross_exposure,
         max_net_exposure=settings.max_net_exposure,
         trim_targets=TRIM_TARGETS.get(contract_type),
+        trim_tolerance=TRIM_TOLERANCE,
         hold_mode=settings.hold_mode,
         reduce_target=settings.goals_reduce_target if delever else None,
         join_touch=delever,

@@ -61,9 +61,13 @@ class StrategyConfig:
     # price. 0.0 keeps the de-lever strictly model-favorable.
     reduce_tolerance: float = 0.0
     # Optional {symbol: target_signed_position} for user-directed trims. The
-    # strategy will move each named position toward its target, trading ONLY at
-    # model-favorable prices (never realizing a loss vs our fair value).
+    # strategy will move each named position toward its target, crossing the
+    # spread when needed but ONLY at model-favorable prices (bounded by
+    # trim_tolerance) so we never realize worse than ~fair vs our model.
     trim_targets: Optional[Dict[str, int]] = None
+    # Price units we'll concede on a targeted trim: cover a short at up to
+    # (fair + trim_tolerance), dump a long down to (fair - trim_tolerance).
+    trim_tolerance: float = 0.0
 
 
 def _gross(positions: Dict[str, int]) -> int:
@@ -88,10 +92,14 @@ def compute_quotes(
     net = _net(positions)
 
     # --- PASS 0: TARGETED TRIM (user-directed risk reduction) ---
-    # Move specific positions toward a target, trading ONLY at model-favorable
-    # prices. We cross the spread to exit a long only when the bid is still
-    # >= fair (we realize a gain vs model), and cover a short only at <= fair
-    # (we never pay up). So a trim is at worst PnL-neutral vs our model.
+    # Move specific positions toward a target. Unlike the caps-based reduce,
+    # this ACTIVELY crosses the spread to unwind offside/dead positions, but
+    # only at model-favorable prices bounded by trim_tolerance:
+    #   - dump a long -> SELL, hitting a bid >= fair - tol (else rest at an
+    #     offer >= that floor); never sell cheaper than the model minus tol.
+    #   - cover a short -> BUY, lifting an ask <= fair + tol (else rest at a
+    #     bid <= that cap); never pay more than the model plus tol.
+    # If no acceptable price exists this cycle, the position is left untouched.
     trimmed: set = set()
     for symbol, target in (cfg.trim_targets or {}).items():
         pos = int(positions.get(symbol, 0))
@@ -100,29 +108,32 @@ def compute_quotes(
             continue
         book = order_books.get(symbol)
         fair = fair_values.get(symbol)
-        if book is None or fair is None or fair <= 0:
+        if book is None or fair is None:
             continue
         size = min(abs(target - pos), cfg.max_order_size)
         if size <= 0:
             continue
-        # PASSIVE-ONLY: rest on our own side of the book (maker). We never cross
-        # the spread, so a trim can only fill when a counterparty trades into us
-        # at a model-favorable price — it cannot run away / overshoot the target.
+        bid_px = book.best_bid_px
+        ask_px = book.best_ask_px
         if target < pos:
-            # Reduce a long -> rest an ASK at the offer (only sells if lifted).
-            ask_px = book.best_ask_px
-            if ask_px is not None and ask_px >= fair:
-                price = round(ask_px, 2)
+            # Dump a long -> SELL at a model-favorable price (>= fair - tol).
+            floor = fair - cfg.trim_tolerance
+            if bid_px is not None and bid_px >= floor:
+                price = round(bid_px, 2)          # cross to hit the bid
+            elif ask_px is not None and ask_px >= floor:
+                price = round(ask_px, 2)          # passive maker at the offer
             else:
-                price = round(max(fair, cfg.price_min), 2)
+                continue
             intents.append(QuoteIntent(symbol, price, -size, "trim", 0.0))
         else:
-            # Reduce a short -> rest a BID at the bid (only buys if hit).
-            bid_px = book.best_bid_px
-            if bid_px is not None and bid_px <= fair:
-                price = round(bid_px, 2)
+            # Cover a short -> BUY at a model-favorable price (<= fair + tol).
+            cap = fair + cfg.trim_tolerance
+            if ask_px is not None and ask_px <= cap:
+                price = round(ask_px, 2)          # cross to lift the offer
+            elif bid_px is not None and bid_px <= cap:
+                price = round(bid_px, 2)          # passive maker at the bid
             else:
-                price = round(min(fair, cfg.price_max), 2)
+                continue
             intents.append(QuoteIntent(symbol, price, size, "trim", 0.0))
         trimmed.add(symbol)
 

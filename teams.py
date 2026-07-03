@@ -15,7 +15,7 @@ from typing import Dict, List, Tuple
 ELO_RATINGS: Dict[str, float] = {
     # Tier 1: genuine contenders (combined ~75% win prob)
     "Spain": 2050,
-    "France": 2035,        # manual view: not as overpriced -> closer to market
+    "France": 2160,        # manual view: strong conviction -> semifinal floor, real title threat (clear #1)
     "Argentina": 2000,
     "England": 1970,
     "Brazil": 1960,
@@ -191,6 +191,24 @@ KNOCKOUT_BRACKET: List[Tuple[str, str]] = [
     ("Australia", "Egypt"),                       # M88
     ("Switzerland", "Algeria"),                   # M85
     ("Colombia", "Ghana"),                        # M87
+]
+
+# Decided knockout matches: (team_a, team_b, goals_a, goals_b, winner).
+# Goals are 90'+ET only (shootout goals excluded, matching the goals market);
+# `winner` captures penalty-shootout outcomes. The simulator uses the real
+# winner/goals for these and only simulates the still-undecided ties.
+KNOCKOUT_RESULTS: List[Tuple[str, str, int, int, str]] = [
+    # Round of 32 (Jun 28 - Jul 1)
+    ("South Africa", "Canada", 0, 1, "Canada"),
+    ("Brazil", "Japan", 2, 1, "Brazil"),
+    ("Germany", "Paraguay", 1, 1, "Paraguay"),         # Paraguay 4-3 pens
+    ("Netherlands", "Morocco", 1, 1, "Morocco"),       # Morocco 3-2 pens
+    ("Ivory Coast", "Norway", 1, 2, "Norway"),
+    ("France", "Sweden", 3, 0, "France"),
+    ("Mexico", "Ecuador", 2, 0, "Mexico"),
+    ("England", "Congo DR", 2, 1, "England"),
+    ("Belgium", "Senegal", 3, 2, "Belgium"),           # a.e.t.
+    ("United States", "Bosnia and Herzegovina", 2, 0, "United States"),
 ]
 
 POINTS_SETTLEMENT = {

@@ -18,6 +18,7 @@ from teams import (
     COMPLETED_MATCHES,
     GROUPS,
     KNOCKOUT_BRACKET,
+    KNOCKOUT_RESULTS,
     POINTS_SETTLEMENT,
     TeamProfile,
     team_profile,
@@ -27,6 +28,14 @@ from teams import (
 def _completed_lookup() -> Dict[frozenset, Tuple[str, str, int, int]]:
     """Index completed matches by the unordered pair of teams."""
     return {frozenset((a, b)): (a, b, ga, gb) for a, b, ga, gb in COMPLETED_MATCHES}
+
+
+def _knockout_lookup() -> Dict[frozenset, Tuple[str, str, int, int, str]]:
+    """Index decided knockout matches by the unordered pair of teams."""
+    return {
+        frozenset((a, b)): (a, b, ga, gb, w)
+        for a, b, ga, gb, w in KNOCKOUT_RESULTS
+    }
 
 
 @dataclass
@@ -203,6 +212,7 @@ def _simulate_knockout(
     profiles: Dict[str, TeamProfile],
     rng: random.Random,
     goal_totals: Dict[str, int],
+    knockout_completed: Dict[frozenset, Tuple[str, str, int, int, str]] | None = None,
 ) -> Tuple[str, Dict[str, str]]:
     """Simulate full knockout bracket. Returns (champion, {team: exit_stage}).
 
@@ -213,6 +223,7 @@ def _simulate_knockout(
     """
     exits: Dict[str, str] = {}
     remaining = list(bracket_order)
+    knockout_completed = knockout_completed or {}
     stage_order = [
         "round_of_32",
         "round_of_16",
@@ -227,7 +238,13 @@ def _simulate_knockout(
         stage = stage_order[min(stage_idx, len(stage_order) - 1)]
         for i in range(0, len(remaining) - 1, 2):
             a, b = remaining[i], remaining[i + 1]
-            winner, ga, gb = _simulate_knockout_match(a, b, profiles, rng)
+            decided = knockout_completed.get(frozenset((a, b)))
+            if decided is not None:
+                ra, _rb, rga, rgb, rw = decided
+                ga, gb = (rga, rgb) if ra == a else (rgb, rga)
+                winner = rw
+            else:
+                winner, ga, gb = _simulate_knockout_match(a, b, profiles, rng)
             loser = b if winner == a else a
             goal_totals[a] += ga
             goal_totals[b] += gb
@@ -314,6 +331,7 @@ def run_simulation(
     profiles = {team: team_profile(team) for team in ALL_TEAMS}
     rng = random.Random(seed)
     completed = _completed_lookup()
+    knockout_completed = _knockout_lookup()
     fixed_bracket = _fixed_bracket_order()
     fixed_set = set(fixed_bracket)
 
@@ -344,7 +362,7 @@ def run_simulation(
             bracket_order = _seed_bracket(qualifiers, profiles)
 
         champion, knockout_exits = _simulate_knockout(
-            bracket_order, profiles, rng, goal_totals,
+            bracket_order, profiles, rng, goal_totals, knockout_completed,
         )
         binary_wins[champion] += 1
 
